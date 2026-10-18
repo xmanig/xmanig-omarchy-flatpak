@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "xmanig.flatpak",
+  "name": "Flatpak",
+  "version": "1.0.0",
+  "author": "xmanig",
+  "license": "MIT",
+  "description": "Browse, launch, and install Flatpak applications from the Omarchy bar",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Flatpak",
+    "description": "Launch installed Flatpaks and search or install Flathub apps",
+    "category": "Applications",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
+}
