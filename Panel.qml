@@ -20,9 +20,11 @@ Panel {
   property var searchResults: []
   property string searchText: ""
   property string searchError: ""
-  property string installStatus: ""
+  property string actionStatus: ""
   property var pendingInstall: null
+  property var pendingUninstall: null
   property bool installing: false
+  property bool uninstalling: false
   property int searchGeneration: 0
 
   readonly property string scriptPath: Model.urlToPath(Qt.resolvedUrl("Model.js"))
@@ -76,9 +78,10 @@ Panel {
   }
 
   function requestInstall(app) {
-    if (!app || isInstalled(app.id) || !/^[A-Za-z0-9_.-]+$/.test(app.id)) return
+    if (!app || isInstalled(app.id) || installing || uninstalling
+        || !/^[A-Za-z0-9_.-]+$/.test(app.id)) return
     pendingInstall = app
-    installStatus = ""
+    actionStatus = ""
   }
 
   function cancelInstall() {
@@ -87,14 +90,38 @@ Panel {
   }
 
   function confirmInstall() {
-    if (!pendingInstall || installing) return
+    if (!pendingInstall || installing || uninstalling) return
     var id = pendingInstall.id
     if (!/^[A-Za-z0-9_.-]+$/.test(id)) return
     installing = true
-    installStatus = "Installing " + pendingInstall.name + "…"
+    actionStatus = "Installing " + pendingInstall.name + "…"
     installProc.command = ["flatpak", "install", "--user", "--noninteractive", "flathub", id]
     installProc.running = true
   }
+
+  function requestUninstall(app) {
+    if (!app || !isInstalled(app.id) || installing || uninstalling
+        || !/^[A-Za-z0-9_.-]+$/.test(app.id)) return
+    pendingUninstall = app
+    actionStatus = ""
+  }
+
+  function cancelUninstall() {
+    if (uninstalling) return
+    pendingUninstall = null
+  }
+
+  function confirmUninstall() {
+    if (!pendingUninstall || installing || uninstalling) return
+    var id = pendingUninstall.id
+    if (!/^[A-Za-z0-9_.-]+$/.test(id)) return
+    uninstalling = true
+    actionStatus = "Uninstalling " + pendingUninstall.name + "…"
+    var scope = pendingUninstall.installation === "user" ? "--user" : "--system"
+    uninstallProc.command = ["flatpak", "uninstall", scope, "--noninteractive", id]
+    uninstallProc.running = true
+  }
+
 
   onOpenedChanged: {
     if (!opened) return
@@ -162,11 +189,35 @@ Panel {
       root.installing = false
       root.pendingInstall = null
       if (exitCode === 0) {
-        root.installStatus = "Installed " + name
+        root.actionStatus = "Installed " + name
         root.refresh()
       } else {
-        root.installStatus = "Could not install " + name
+        root.actionStatus = "Could not install " + name
           + (String(installError.text || "").trim() !== "" ? ": " + String(installError.text).trim().split("\n").pop() : "")
+      }
+    }
+  }
+
+  Process {
+    id: uninstallProc
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: uninstallError
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      var name = root.pendingUninstall ? root.pendingUninstall.name : "Flatpak"
+      root.uninstalling = false
+      root.pendingUninstall = null
+      if (exitCode === 0) {
+        root.actionStatus = "Uninstalled " + name
+        root.refresh()
+      } else {
+        root.actionStatus = "Could not uninstall " + name
+          + (String(uninstallError.text || "").trim() !== "" ? ": " + String(uninstallError.text).trim().split("\n").pop() : "")
       }
     }
   }
@@ -236,7 +287,8 @@ Panel {
         }
 
         Rectangle {
-          visible: root.pendingInstall !== null || root.installing
+          visible: root.pendingInstall !== null || root.pendingUninstall !== null
+            || root.installing || root.uninstalling
           width: parent.width
           color: root.surface
           radius: Style.cornerRadius
@@ -251,9 +303,14 @@ Panel {
             Text {
               width: parent.width
               textFormat: Text.PlainText
-              text: root.installing
-                ? root.installStatus
-              : (root.pendingInstall ? "Install “" + root.pendingInstall.name + "” from Flathub?" : "")
+              text: root.installing || root.uninstalling
+                ? root.actionStatus
+                : root.pendingInstall
+                  ? "Install “" + root.pendingInstall.name + "” from Flathub?"
+                  : (root.pendingUninstall
+                    ? "Are you 100% sure you want to uninstall “"
+                      + root.pendingUninstall.name + "”?"
+                    : "")
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -261,10 +318,12 @@ Panel {
             }
 
             Text {
-              visible: !root.installing
+              visible: !root.installing && !root.uninstalling
               width: parent.width
               textFormat: Text.PlainText
-              text: root.pendingInstall ? root.pendingInstall.id : ""
+              text: root.pendingInstall
+                ? root.pendingInstall.id
+                : (root.pendingUninstall ? root.pendingUninstall.id : "")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -272,7 +331,7 @@ Panel {
             }
 
             RowLayout {
-              visible: !root.installing
+              visible: !root.installing && !root.uninstalling
               width: parent.width
               spacing: Style.space(6)
 
@@ -280,28 +339,33 @@ Panel {
 
               PanelActionButton {
                 iconText: ""
-                tooltipText: "Cancel installation"
+                tooltipText: root.pendingUninstall ? "Cancel uninstallation" : "Cancel installation"
                 foreground: root.foreground
                 hoverColor: root.accent
-                onClicked: root.cancelInstall()
+                onClicked: root.pendingUninstall
+                  ? root.cancelUninstall()
+                  : root.cancelInstall()
               }
 
               PanelActionButton {
-                iconText: ""
-                tooltipText: "Install from Flathub"
+                iconText: root.pendingUninstall ? "" : ""
+                tooltipText: root.pendingUninstall ? "Uninstall application" : "Install from Flathub"
                 foreground: root.foreground
                 hoverColor: root.accent
-                onClicked: root.confirmInstall()
+                onClicked: root.pendingUninstall
+                  ? root.confirmUninstall()
+                  : root.confirmInstall()
               }
             }
           }
         }
 
         Text {
-          visible: root.installStatus !== "" && root.pendingInstall === null && !root.installing
+          visible: root.actionStatus !== "" && root.pendingInstall === null
+            && root.pendingUninstall === null && !root.installing && !root.uninstalling
           width: parent.width
           textFormat: Text.PlainText
-          text: root.installStatus
+          text: root.actionStatus
           color: root.accent
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -417,6 +481,14 @@ Panel {
                   foreground: root.foreground
                   hoverColor: root.accent
                   onClicked: root.launch(modelData)
+                }
+
+                PanelActionButton {
+                  iconText: ""
+                  tooltipText: "Uninstall " + modelData.name
+                  foreground: root.foreground
+                  hoverColor: root.accent
+                  onClicked: root.requestUninstall(modelData)
                 }
               }
             }

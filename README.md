@@ -10,8 +10,10 @@ An Omarchy center-bar browser for installed Flatpak applications and Flathub.
 - Launches installed apps with `flatpak run`.
 - Searches Flathub through the local `flatpak` CLI.
 - Installs selected Flathub apps after an explicit confirmation step.
+- Uninstalls installed apps after an explicit “100% sure” confirmation step.
 - Installs to the user Flatpak installation with `--user`; no sudo prompt is
   triggered by the plugin.
+- Uninstalls from the installation where each app is installed.
 - Refreshes installed applications every 30 seconds.
 
 ## Install
@@ -32,6 +34,8 @@ The plugin lands at `~/.config/omarchy/plugins/xmanig.flatpak/`.
 - Click the play button to launch an installed app.
 - Click the download button, review the application ID, then confirm before
   installing it.
+- Click the trash button, verify the application name and ID, then confirm
+  only if you are 100% sure before uninstalling it.
 - Press `r` or use the refresh button to reload installed apps.
 - Press `Esc` to clear the search, then press it again to close the panel.
 
